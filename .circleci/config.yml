@@ -1,89 +1,15 @@
 version: 2.1
-
 orbs:
-  slack: circleci/slack@4.1
-  aws-s3: circleci/aws-s3@3.0
-  node: circleci/node@4.7.0
-
+  snyk: snyk/snyk@1.2.3
 jobs:
   build:
-    executor:
-      name: node/default
-      tag: '13.14'
-    resource_class: small
-    steps:
-      - checkout
-      - node/install-packages
-  test:
-    executor:
-      name: node/default
-      tag: '13.14'
-    resource_class: large
-    steps:
-      - checkout
-      - node/install-packages
-      - run: npm run test
-      - run: mkdir -p test-results
-      - store_test_results:
-          path: test-results
-      - store_artifacts:
-          path: test-results
-  deploy:
-    circleci_ip_ranges: true # opts the job into the IP ranges feature
     docker:
-      - image: 'cimg/base:stable'
-    resource_class: small
+      - image: cimg/node:18.4.0
     steps:
       - checkout
-      - run:
-          name: "Get Machine IP & write to the file"
-          command: mkdir bucket && curl ifconfig.co > bucket/machine_ip.txt && cat bucket/machine_ip.txt
-      - aws-s3/sync:
-          arguments: |
-            --cache-control "max-age=86400"
-          from: bucket
-          to: ${S3_BUCKET_ENDPOINT}
-      - aws-s3/copy:
-          arguments: '--dryrun'
-          from: bucket/machine_ip.txt
-          to: ${S3_BUCKET_ENDPOINT}
-  notify:
-    docker:
-      - image: 'cimg/base:stable'
-    steps:
-      - slack/notify:
-          custom: |
-            {
-              "blocks": [
-                {
-                  "type": "section",
-                  "fields": [
-                    {
-                      "channel": "C02JEP6Q3B2",
-                      "type": "plain_text",
-                      "text": "*This is a text notification test*",
-                      "emoji": true
-                    }
-                  ]
-                }
-              ]
-            }
-          event: always
+      - run: npm ci
+      - snyk/scan
 workflows:
-  test-build-and-notify:
+  test-dependencies:
     jobs:
-    - build
-    - test:
-        requires:
-          - build
-        filters:
-          branches:
-            ignore: /dependabot\/.*/
-    - deploy:
-        context: jasur-aws-s3
-        requires:
-          - test
-    - notify:
-        context: slack_secrets
-        requires:
-          - deploy
+      - build
